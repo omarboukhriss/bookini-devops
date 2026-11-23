@@ -1,0 +1,102 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Setup') {
+            steps {
+                sh '''
+                    echo "Preparing CI environment"
+                    docker --version
+                    node --version || true
+                '''
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh '''
+                    echo "Validating JavaScript"
+
+                    docker run --rm \
+                      -v "$PWD:/workspace" \
+                      -w /workspace \
+                      node:22-alpine \
+                      sh -c 'for f in js/*.js; do node --check "$f"; done'
+
+                    echo "Building Docker image"
+
+                    docker build \
+                      -t bookini:pr-${BUILD_NUMBER} \
+                      .
+                '''
+            }
+        }
+
+        stage('Run Docker') {
+            steps {
+                sh '''
+                    docker rm -f bookini-pr || true
+
+                    docker run -d \
+                      --name bookini-pr \
+                      -p 8080:80 \
+                      bookini:pr-${BUILD_NUMBER}
+
+                    sleep 3
+
+                    docker ps
+                '''
+            }
+        }
+
+        stage('Smoke Test') {
+            steps {
+                sh '''
+                    chmod +x scripts/smoke-test.sh
+
+                    ./scripts/smoke-test.sh \
+                      http://localhost:8080
+                '''
+            }
+        }
+
+        stage('Archive Artifacts') {
+            steps {
+                sh '''
+                    mkdir -p artifacts
+
+                    docker logs bookini-pr \
+                      > artifacts/docker.log 2>&1 || true
+
+                    echo "PR build: ${BUILD_NUMBER}" \
+                      > artifacts/build-report.txt
+
+                    echo "Commit: ${GIT_COMMIT}" \
+                      >> artifacts/build-report.txt
+
+                    echo "Status: PASSED" \
+                      >> artifacts/build-report.txt
+                '''
+
+                archiveArtifacts artifacts: 'artifacts/**',
+                    fingerprint: true
+            }
+        }
+
+        stage('Cleanup') {
+            steps {
+                sh '''
+                    docker rm -f bookini-pr || true
+                    docker rmi bookini:pr-${BUILD_NUMBER} || true
+                '''
+            }
+        }
+    }
+}
