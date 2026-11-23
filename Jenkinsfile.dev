@@ -1,0 +1,131 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = "bookini-dev:${BUILD_NUMBER}"
+        CONTAINER_NAME = "bookini-dev"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Setup') {
+            steps {
+                sh '''
+                    echo "=== ENVIRONMENT ==="
+                    docker --version
+                    git --version
+                    echo "Branch: ${BRANCH_NAME}"
+                    echo "Build: ${BUILD_NUMBER}"
+                '''
+            }
+        }
+
+        stage('Build') {
+            parallel {
+
+                stage('Runtime Node 20') {
+                    steps {
+                        sh '''
+                            docker run --rm \
+                              -v "$PWD:/workspace" \
+                              -w /workspace \
+                              node:20-alpine \
+                              sh -c 'for f in js/*.js; do node --check "$f"; done'
+                        '''
+                    }
+                }
+
+                stage('Runtime Node 22') {
+                    steps {
+                        sh '''
+                            docker run --rm \
+                              -v "$PWD:/workspace" \
+                              -w /workspace \
+                              node:22-alpine \
+                              sh -c 'for f in js/*.js; do node --check "$f"; done'
+                        '''
+                    }
+                }
+
+                stage('Docker Image') {
+                    steps {
+                        sh '''
+                            docker build \
+                              -t ${IMAGE_NAME} \
+                              .
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Run Docker') {
+            steps {
+                sh '''
+                    docker rm -f ${CONTAINER_NAME} || true
+
+                    docker run -d \
+                      --name ${CONTAINER_NAME} \
+                      -p 8080:80 \
+                      ${IMAGE_NAME}
+
+                    sleep 3
+
+                    docker ps
+                '''
+            }
+        }
+
+        stage('Smoke Test') {
+            steps {
+                sh '''
+                    chmod +x scripts/smoke-test.sh
+
+                    ./scripts/smoke-test.sh \
+                      http://localhost:8080
+                '''
+            }
+        }
+
+        stage('Archive Artifacts') {
+            steps {
+                sh '''
+                    mkdir -p artifacts
+
+                    docker logs ${CONTAINER_NAME} \
+                      > artifacts/docker.log 2>&1 || true
+
+                    echo "Build number: ${BUILD_NUMBER}" \
+                      > artifacts/build-report.txt
+
+                    echo "Branch: ${BRANCH_NAME}" \
+                      >> artifacts/build-report.txt
+
+                    echo "Commit: ${GIT_COMMIT}" \
+                      >> artifacts/build-report.txt
+
+                    echo "Smoke test: PASSED" \
+                      >> artifacts/build-report.txt
+                '''
+
+                archiveArtifacts artifacts: 'artifacts/**',
+                    fingerprint: true
+            }
+        }
+
+        stage('Cleanup') {
+            steps {
+                sh '''
+                    docker rm -f ${CONTAINER_NAME} || true
+                    docker rmi ${IMAGE_NAME} || true
+                '''
+            }
+        }
+    }
+}
