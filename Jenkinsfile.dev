@@ -16,12 +16,12 @@ pipeline {
 
         stage('Setup') {
             steps {
-                sh '''
-                    echo "=== ENVIRONMENT ==="
+                bat '''
+                    echo === ENVIRONMENT ===
                     docker --version
                     git --version
-                    echo "Branch: ${BRANCH_NAME}"
-                    echo "Build: ${BUILD_NUMBER}"
+                    echo Branch: %BRANCH_NAME%
+                    echo Build: %BUILD_NUMBER%
                 '''
             }
         }
@@ -31,33 +31,33 @@ pipeline {
 
                 stage('Runtime Node 20') {
                     steps {
-                        sh '''
-                            docker run --rm \
-                              -v "$PWD:/workspace" \
-                              -w /workspace \
-                              node:20-alpine \
-                              sh -c 'for f in js/*.js; do node --check "$f"; done'
+                        bat '''
+                            docker run --rm ^
+                              -v "%CD%:/workspace" ^
+                              -w /workspace ^
+                              node:20-alpine ^
+                              sh -c "for f in js/*.js; do node --check \\"$f\\"; done"
                         '''
                     }
                 }
 
                 stage('Runtime Node 22') {
                     steps {
-                        sh '''
-                            docker run --rm \
-                              -v "$PWD:/workspace" \
-                              -w /workspace \
-                              node:22-alpine \
-                              sh -c 'for f in js/*.js; do node --check "$f"; done'
+                        bat '''
+                            docker run --rm ^
+                              -v "%CD%:/workspace" ^
+                              -w /workspace ^
+                              node:22-alpine ^
+                              sh -c "for f in js/*.js; do node --check \\"$f\\"; done"
                         '''
                     }
                 }
 
                 stage('Docker Image') {
                     steps {
-                        sh '''
-                            docker build \
-                              -t ${IMAGE_NAME} \
+                        bat '''
+                            docker build ^
+                              -t %IMAGE_NAME% ^
                               .
                         '''
                     }
@@ -67,15 +67,15 @@ pipeline {
 
         stage('Run Docker') {
             steps {
-                sh '''
-                    docker rm -f ${CONTAINER_NAME} || true
+                bat '''
+                    docker rm -f %CONTAINER_NAME% 2>nul || exit /b 0
 
-                    docker run -d \
-                      --name ${CONTAINER_NAME} \
-                      -p 8080:80 \
-                      ${IMAGE_NAME}
+                    docker run -d ^
+                      --name %CONTAINER_NAME% ^
+                      -p 8082:80 ^
+                      %IMAGE_NAME%
 
-                    sleep 3
+                    timeout /t 3 /nobreak >nul
 
                     docker ps
                 '''
@@ -84,34 +84,31 @@ pipeline {
 
         stage('Smoke Test') {
             steps {
-                sh '''
-                    chmod +x scripts/smoke-test.sh
-
-                    ./scripts/smoke-test.sh \
-                      http://localhost:8080
+                bat '''
+                    scripts\\smoke-test.bat http://localhost:8082
                 '''
             }
         }
 
         stage('Archive Artifacts') {
             steps {
-                sh '''
-                    mkdir -p artifacts
+                bat '''
+                    if not exist artifacts mkdir artifacts
 
-                    docker logs ${CONTAINER_NAME} \
-                      > artifacts/docker.log 2>&1 || true
+                    docker logs %CONTAINER_NAME% ^
+                      > artifacts\\docker.log 2>&1
 
-                    echo "Build number: ${BUILD_NUMBER}" \
-                      > artifacts/build-report.txt
+                    echo Build number: %BUILD_NUMBER% ^
+                      > artifacts\\build-report.txt
 
-                    echo "Branch: ${BRANCH_NAME}" \
-                      >> artifacts/build-report.txt
+                    echo Branch: %BRANCH_NAME% ^
+                      >> artifacts\\build-report.txt
 
-                    echo "Commit: ${GIT_COMMIT}" \
-                      >> artifacts/build-report.txt
+                    echo Commit: %GIT_COMMIT% ^
+                      >> artifacts\\build-report.txt
 
-                    echo "Smoke test: PASSED" \
-                      >> artifacts/build-report.txt
+                    echo Smoke test: PASSED ^
+                      >> artifacts\\build-report.txt
                 '''
 
                 archiveArtifacts artifacts: 'artifacts/**',
@@ -121,9 +118,9 @@ pipeline {
 
         stage('Cleanup') {
             steps {
-                sh '''
-                    docker rm -f ${CONTAINER_NAME} || true
-                    docker rmi ${IMAGE_NAME} || true
+                bat '''
+                    docker rm -f %CONTAINER_NAME% 2>nul || exit /b 0
+                    docker rmi %IMAGE_NAME% 2>nul || exit /b 0
                 '''
             }
         }
