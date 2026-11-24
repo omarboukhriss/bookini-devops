@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -12,9 +13,9 @@ pipeline {
         stage('Setup') {
             steps {
                 bat '''
-                    echo "Preparing CI environment"
+                    echo Preparing CI environment
                     docker --version
-                    node --version || true
+                    node --version
                 '''
             }
         }
@@ -22,19 +23,15 @@ pipeline {
         stage('Build') {
             steps {
                 bat '''
-                    echo "Validating JavaScript"
+                    echo Validating JavaScript
 
-                    docker run --rm \
-                      -v "$PWD:/workspace" \
-                      -w /workspace \
-                      node:22-alpine \
-                      sh -c 'for f in js/*.js; do node --check "$f"; done'
+                    docker run --rm -v "%WORKSPACE%:/workspace" -w /workspace node:22-alpine sh -c "for f in js/*.js; do [ -f $f ] || continue; node --check $f || exit 1; done"
 
-                    echo "Building Docker image"
+                    if errorlevel 1 exit /b 1
 
-                    docker build \
-                      -t bookini:pr-${BUILD_NUMBER} \
-                      .
+                    echo Building Docker image
+
+                    docker build -t bookini:pr-%BUILD_NUMBER% .
                 '''
             }
         }
@@ -42,14 +39,15 @@ pipeline {
         stage('Run Docker') {
             steps {
                 bat '''
-                    docker rm -f bookini-pr || true
+                    echo Starting Bookini container
 
-                    docker run -d \
-                      --name bookini-pr \
-                      -p 8080:80 \
-                      bookini:pr-${BUILD_NUMBER}
+                    docker rm -f bookini-pr 2>nul
 
-                    sleep 3
+                    docker run -d --name bookini-pr -p 8080:80 bookini:pr-%BUILD_NUMBER%
+
+                    if errorlevel 1 exit /b 1
+
+                    powershell -NoProfile -Command "Start-Sleep -Seconds 3"
 
                     docker ps
                 '''
@@ -59,10 +57,13 @@ pipeline {
         stage('Smoke Test') {
             steps {
                 bat '''
-                    chmod +x scripts/smoke-test.sh
+                    echo Testing application availability
 
-                    ./scripts/smoke-test.sh \
-                      http://localhost:8080
+                    curl.exe --fail --retry 5 --retry-delay 2 --retry-connrefused http://localhost:8080/
+
+                    if errorlevel 1 exit /b 1
+
+                    echo Smoke Test PASSED
                 '''
             }
         }
@@ -70,19 +71,15 @@ pipeline {
         stage('Archive Artifacts') {
             steps {
                 bat '''
-                    mkdir -p artifacts
+                    if not exist artifacts mkdir artifacts
 
-                    docker logs bookini-pr \
-                      > artifacts/docker.log 2>&1 || true
+                    docker logs bookini-pr > artifacts/docker.log 2>&1
 
-                    echo "PR build: ${BUILD_NUMBER}" \
-                      > artifacts/build-report.txt
+                    echo PR build: %BUILD_NUMBER% > artifacts/build-report.txt
 
-                    echo "Commit: ${GIT_COMMIT}" \
-                      >> artifacts/build-report.txt
+                    echo Commit: %GIT_COMMIT% >> artifacts/build-report.txt
 
-                    echo "Status: PASSED" \
-                      >> artifacts/build-report.txt
+                    echo Status: PASSED >> artifacts/build-report.txt
                 '''
 
                 archiveArtifacts artifacts: 'artifacts/**',
@@ -93,8 +90,13 @@ pipeline {
         stage('Cleanup') {
             steps {
                 bat '''
-                    docker rm -f bookini-pr || true
-                    docker rmi bookini:pr-${BUILD_NUMBER} || true
+                    echo Cleaning up Docker resources
+
+                    docker rm -f bookini-pr 2>nul
+
+                    docker rmi bookini:pr-%BUILD_NUMBER% 2>nul
+
+                    echo Cleanup completed
                 '''
             }
         }
