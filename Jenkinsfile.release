@@ -17,40 +17,29 @@ pipeline {
 
         stage('Setup') {
             steps {
-                sh '''
-                    echo "Release build"
-                    echo "Version: ${TAG_NAME}"
-
+                bat """
+                    echo Release build
+                    echo Version: ${TAG_NAME}
                     docker --version
                     git --version
-                '''
+                """
             }
         }
 
         stage('Build') {
             parallel {
-
                 stage('Runtime Node 20') {
                     steps {
-                        sh '''
-                            docker run --rm \
-                              -v "$PWD:/workspace" \
-                              -w /workspace \
-                              node:20-alpine \
-                              sh -c 'for f in js/*.js; do node --check "$f"; done'
-                        '''
+                        bat """
+                            docker run --rm -v "%cd%:/workspace" -w /workspace node:20-alpine sh -c "for f in js/*.js; do node --check \\"$f\\"; done"
+                        """
                     }
                 }
-
                 stage('Runtime Node 22') {
                     steps {
-                        sh '''
-                            docker run --rm \
-                              -v "$PWD:/workspace" \
-                              -w /workspace \
-                              node:22-alpine \
-                              sh -c 'for f in js/*.js; do node --check "$f"; done'
-                        '''
+                        bat """
+                            docker run --rm -v "%cd%:/workspace" -w /workspace node:22-alpine sh -c "for f in js/*.js; do node --check \\"$f\\"; done"
+                        """
                     }
                 }
             }
@@ -58,65 +47,43 @@ pipeline {
 
         stage('Run Docker') {
             steps {
-                sh '''
-                    docker build \
-                      -t ${IMAGE_NAME} \
-                      .
-
-                    docker rm -f ${CONTAINER_NAME} || true
-
-                    docker run -d \
-                      --name ${CONTAINER_NAME} \
-                      -p 8080:80 \
-                      ${IMAGE_NAME}
-
-                    sleep 3
-                '''
+                bat """
+                    docker build -t ${IMAGE_NAME} .
+                    docker rm -f ${CONTAINER_NAME} 2>nul
+                    docker run -d --name ${CONTAINER_NAME} -p 8081:80 ${IMAGE_NAME}
+                    powershell -NoProfile -Command "Start-Sleep -Seconds 3"
+                """
             }
         }
 
         stage('Smoke Test') {
             steps {
-                sh '''
-                    chmod +x scripts/smoke-test.sh
-
-                    ./scripts/smoke-test.sh \
-                      http://localhost:8080
-                '''
+                // Since you are on Windows, we use curl.exe directly instead of the .sh script
+                bat """
+                    curl.exe --fail --retry 5 --retry-delay 2 --retry-connrefused http://localhost:8081/
+                """
             }
         }
 
         stage('Archive Artifacts') {
             steps {
-                sh '''
-                    mkdir -p artifacts
-
-                    docker logs ${CONTAINER_NAME} \
-                      > artifacts/docker.log 2>&1 || true
-
-                    echo "Release version: ${TAG_NAME}" \
-                      > artifacts/release-report.txt
-
-                    echo "Commit: ${GIT_COMMIT}" \
-                      >> artifacts/release-report.txt
-
-                    echo "Release status: PASSED" \
-                      >> artifacts/release-report.txt
-
-                    cp Dockerfile artifacts/Dockerfile
-                '''
-
-                archiveArtifacts artifacts: 'artifacts/**',
-                    fingerprint: true
+                bat """
+                    if not exist artifacts mkdir artifacts
+                    docker logs ${CONTAINER_NAME} > artifacts/docker.log 2>&1
+                    echo Release version: ${TAG_NAME} > artifacts/release-report.txt
+                    echo Commit: ${GIT_COMMIT} >> artifacts/release-report.txt
+                    echo Release status: PASSED >> artifacts/release-report.txt
+                    copy Dockerfile artifacts/Dockerfile
+                """
+                archiveArtifacts artifacts: 'artifacts/**', fingerprint: true
             }
         }
-
-        stage('Cleanup') {
-            steps {
-                sh '''
-                    docker rm -f ${CONTAINER_NAME} || true
-                '''
-            }
+    }
+    
+    // Added a post block to ensure cleanup ALWAYS happens, even if a stage fails
+    post {
+        always {
+            bat "docker rm -f ${CONTAINER_NAME} 2>nul || exit 0"
         }
     }
 }
