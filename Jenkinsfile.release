@@ -1,9 +1,8 @@
 pipeline {
     agent any
 
-    environment {
-        VERSION = "${TAG_NAME}"
-        IMAGE_NAME = "bookini:${TAG_NAME}"
+    VERSION = "${env.TAG_NAME ?: env.BUILD_NUMBER}"
+        IMAGE_NAME = "bookini:${env.TAG_NAME ?: env.BUILD_NUMBER}"
         CONTAINER_NAME = "bookini-release"
     }
 
