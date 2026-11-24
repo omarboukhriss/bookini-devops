@@ -28,7 +28,7 @@ pipeline {
                       -v "$PWD:/workspace" \
                       -w /workspace \
                       node:22-alpine \
-                      bat -c 'for f in js/*.js; do node --check "$f"; done'
+                      sh -c 'for f in js/*.js; do node --check "$f"; done'
 
                     echo "Building Docker image"
 
