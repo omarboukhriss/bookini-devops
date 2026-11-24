@@ -11,7 +11,7 @@ pipeline {
 
         stage('Setup') {
             steps {
-                sh '''
+                bat '''
                     echo "Preparing CI environment"
                     docker --version
                     node --version || true
@@ -21,14 +21,14 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh '''
+                bat '''
                     echo "Validating JavaScript"
 
                     docker run --rm \
                       -v "$PWD:/workspace" \
                       -w /workspace \
                       node:22-alpine \
-                      sh -c 'for f in js/*.js; do node --check "$f"; done'
+                      bat -c 'for f in js/*.js; do node --check "$f"; done'
 
                     echo "Building Docker image"
 
@@ -41,7 +41,7 @@ pipeline {
 
         stage('Run Docker') {
             steps {
-                sh '''
+                bat '''
                     docker rm -f bookini-pr || true
 
                     docker run -d \
@@ -58,7 +58,7 @@ pipeline {
 
         stage('Smoke Test') {
             steps {
-                sh '''
+                bat '''
                     chmod +x scripts/smoke-test.sh
 
                     ./scripts/smoke-test.sh \
@@ -69,7 +69,7 @@ pipeline {
 
         stage('Archive Artifacts') {
             steps {
-                sh '''
+                bat '''
                     mkdir -p artifacts
 
                     docker logs bookini-pr \
@@ -92,7 +92,7 @@ pipeline {
 
         stage('Cleanup') {
             steps {
-                sh '''
+                bat '''
                     docker rm -f bookini-pr || true
                     docker rmi bookini:pr-${BUILD_NUMBER} || true
                 '''
