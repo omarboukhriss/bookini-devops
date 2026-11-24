@@ -3,7 +3,7 @@
 
 echo Checking application...
 
-curl -f http://localhost:8082/
+curl -f http://localhost:8081/
 
 if %ERRORLEVEL% NEQ 0 (
     echo Smoke test FAILED
