@@ -29,16 +29,18 @@ pipeline {
             parallel {
                 stage('Runtime Node 20') {
                     steps {
-                        bat """
-                            docker run --rm -v "%cd%:/workspace" -w /workspace node:20-alpine sh -c "for f in js/*.js; do node --check \\"$f\\"; done"
-                        """
+                        // Notice the single quotes ''' here!
+                        bat '''
+                            docker run --rm -v "%cd%:/workspace" -w /workspace node:20-alpine sh -c "for f in js/*.js; do node --check $f; done"
+                        '''
                     }
                 }
                 stage('Runtime Node 22') {
                     steps {
-                        bat """
-                            docker run --rm -v "%cd%:/workspace" -w /workspace node:22-alpine sh -c "for f in js/*.js; do node --check \\"$f\\"; done"
-                        """
+                        // Notice the single quotes ''' here!
+                        bat '''
+                            docker run --rm -v "%cd%:/workspace" -w /workspace node:22-alpine sh -c "for f in js/*.js; do node --check $f; done"
+                        '''
                     }
                 }
             }
@@ -78,7 +80,6 @@ pipeline {
         }
     }
 
-    // This post block MUST be inside the main pipeline { } block, right before the final closing bracket.
     post {
         always {
             bat "docker rm -f ${CONTAINER_NAME} 2>nul || exit 0"
