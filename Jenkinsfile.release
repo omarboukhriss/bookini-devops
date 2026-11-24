@@ -1,13 +1,13 @@
 pipeline {
     agent any
 
-    VERSION = "${env.TAG_NAME ?: env.BUILD_NUMBER}"
+    environment {
+        VERSION = "${env.TAG_NAME ?: env.BUILD_NUMBER}"
         IMAGE_NAME = "bookini:${env.TAG_NAME ?: env.BUILD_NUMBER}"
         CONTAINER_NAME = "bookini-release"
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 checkout scm
@@ -18,7 +18,7 @@ pipeline {
             steps {
                 bat """
                     echo Release build
-                    echo Version: ${TAG_NAME}
+                    echo Version: ${VERSION}
                     docker --version
                     git --version
                 """
@@ -57,7 +57,6 @@ pipeline {
 
         stage('Smoke Test') {
             steps {
-                // Since you are on Windows, we use curl.exe directly instead of the .sh script
                 bat """
                     curl.exe --fail --retry 5 --retry-delay 2 --retry-connrefused http://localhost:8081/
                 """
@@ -69,7 +68,7 @@ pipeline {
                 bat """
                     if not exist artifacts mkdir artifacts
                     docker logs ${CONTAINER_NAME} > artifacts/docker.log 2>&1
-                    echo Release version: ${TAG_NAME} > artifacts/release-report.txt
+                    echo Release version: ${VERSION} > artifacts/release-report.txt
                     echo Commit: ${GIT_COMMIT} >> artifacts/release-report.txt
                     echo Release status: PASSED >> artifacts/release-report.txt
                     copy Dockerfile artifacts/Dockerfile
@@ -78,8 +77,8 @@ pipeline {
             }
         }
     }
-    
-    // Added a post block to ensure cleanup ALWAYS happens, even if a stage fails
+
+    // This post block MUST be inside the main pipeline { } block, right before the final closing bracket.
     post {
         always {
             bat "docker rm -f ${CONTAINER_NAME} 2>nul || exit 0"
