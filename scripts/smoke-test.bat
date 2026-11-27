@@ -1,11 +1,15 @@
-
 @echo off
+setlocal
 
-echo Checking application...
+REM Use the URL passed as first arg, fall back to 8081 if none
+set "URL=%~1"
+if "%URL%"=="" set "URL=http://localhost:8081"
 
-curl -f http://localhost:8081/
+echo Checking application at %URL% ...
 
-if %ERRORLEVEL% NEQ 0 (
+REM Retry up to 10 times, 3s apart, fail on HTTP errors
+curl -fsS --retry 10 --retry-delay 3 --retry-connrefused --max-time 10 "%URL%"
+if errorlevel 1 (
     echo Smoke test FAILED
     exit /b 1
 )
